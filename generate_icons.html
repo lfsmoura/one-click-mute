@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Generate Icons</title>
+    <style>
+      canvas {
+        border: 1px solid #ccc;
+        margin: 10px;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Icon Generator</h2>
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <p>
+        Right-click each canvas and select "Save image as..." to save the icons.
+      </p>
+    </div>
+
+    <script>
+      function drawIcon(canvas) {
+        const ctx = canvas.getContext("2d");
+        const size = canvas.width;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, size, size);
+
+        // Draw background circle
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff6961";
+        ctx.fill();
+
+        // Draw mute symbol
+        ctx.beginPath();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = size * 0.1;
+        ctx.lineCap = "round";
+
+        const margin = size * 0.2;
+        ctx.moveTo(margin, margin);
+        ctx.lineTo(size - margin, size - margin);
+        ctx.moveTo(size - margin, margin);
+        ctx.lineTo(margin, size - margin);
+
+        ctx.stroke();
+      }
+
+      // Draw icons
+      drawIcon(document.getElementById("icon128"));
+      drawIcon(document.getElementById("icon48"));
+    </script>
+  </body>
+</html>

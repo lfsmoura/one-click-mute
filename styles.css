@@ -1,0 +1,22 @@
+.quick-mute-button {
+  background-color: #ff6961;
+  color: white;
+  border: 1px solid #d43e3e;
+  border-radius: 15px;
+  padding: 4px 10px;
+  margin-left: 8px;
+  margin-right: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.quick-mute-button:hover {
+  background-color: #d43e3e;
+  border-color: #a03030;
+}
