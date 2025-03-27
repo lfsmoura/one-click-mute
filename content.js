@@ -5,45 +5,58 @@ const TWEET_SELECTOR = 'article[role="article"]';
 const USERNAME_SELECTOR = 'a[href^="/"][dir="ltr"]:not([href*="/status/"])';
 const ACTIONS_BAR_SELECTOR = 'div[role="group"]';
 const PROCESSED_MARKER = "data-quick-mute-added";
+const CHECK_INTERVAL = 2000; // Check for new tweets every 2 seconds
 
 // --- Functions ---
 
 function getUsernameFromTweet(tweetElement) {
   try {
-    const userLinks = tweetElement.querySelectorAll(USERNAME_SELECTOR);
-    for (const link of userLinks) {
-      const href = link.getAttribute("href");
-      const textContent = link.textContent?.trim();
-      if (href && href.startsWith("/") && !href.includes("/") && textContent) {
-        const userNameElement = link.closest('div[data-testid="User-Name"]');
-        if (userNameElement) {
-          const spans = userNameElement.querySelectorAll("span");
-          for (const span of spans) {
-            if (span.textContent?.startsWith("@")) {
-              return span.textContent.trim();
-            }
-          }
-        }
-      }
-      const userNameTestId = tweetElement.querySelector(
-        '[data-testid="User-Name"]'
-      );
-      if (userNameTestId) {
-        const spans = userNameTestId.querySelectorAll("span");
-        for (const span of spans) {
-          if (span.textContent?.startsWith("@")) {
-            return span.textContent.trim();
-          }
+    // First try to find the username in the User-Name section
+    const userNameSection = tweetElement.querySelector(
+      '[data-testid="User-Name"]'
+    );
+    if (userNameSection) {
+      // Look for the @username span
+      const spans = userNameSection.querySelectorAll("span");
+      for (const span of spans) {
+        const text = span.textContent?.trim();
+        if (text?.startsWith("@")) {
+          return text;
         }
       }
     }
 
-    const headerSpans = tweetElement.querySelectorAll(
-      'div[data-testid="Tweet-User-Avatar"] ~ div span'
+    // Try to find username in the avatar container
+    const avatarContainer = tweetElement.querySelector(
+      '[data-testid="UserAvatar-Container-"]'
     );
-    for (const span of headerSpans) {
-      if (span.textContent?.startsWith("@")) {
-        return span.textContent.trim();
+    if (avatarContainer) {
+      const username = avatarContainer
+        .getAttribute("data-testid")
+        ?.replace("UserAvatar-Container-", "");
+      if (username) {
+        return `@${username}`;
+      }
+    }
+
+    // Look for any link that contains the username
+    const links = tweetElement.querySelectorAll('a[href^="/"]');
+    for (const link of links) {
+      const href = link.getAttribute("href");
+      if (href && !href.includes("/status/") && !href.includes("/i/")) {
+        const text = link.textContent?.trim();
+        if (text?.startsWith("@")) {
+          return text;
+        }
+      }
+    }
+
+    // Last resort: look for any text that starts with @
+    const allTextNodes = tweetElement.querySelectorAll("span");
+    for (const node of allTextNodes) {
+      const text = node.textContent?.trim();
+      if (text?.startsWith("@")) {
+        return text;
       }
     }
   } catch (error) {
@@ -62,38 +75,23 @@ function simulateMuteAction(tweetElement, username) {
 
   moreButton.click();
 
-  // Wait for menu to appear and be fully loaded
   setTimeout(() => {
     try {
-      // Find the menu container
       const menu = document.querySelector('div[role="menu"]');
       if (!menu) {
         document.body.click();
         return;
       }
 
-      // Find the mute option by looking for the text content
       const menuItems = menu.querySelectorAll('div[role="menuitem"]');
       let muteMenuItem = null;
       const muteTextIdentifier = `Mute ${username}`;
 
-      // First try exact match
       for (const item of menuItems) {
         const textContent = item.textContent || "";
-        if (textContent.trim() === muteTextIdentifier) {
+        if (textContent.trim().includes(muteTextIdentifier)) {
           muteMenuItem = item;
           break;
-        }
-      }
-
-      // If not found, try partial match
-      if (!muteMenuItem) {
-        for (const item of menuItems) {
-          const textContent = item.textContent || "";
-          if (textContent.trim().includes(muteTextIdentifier)) {
-            muteMenuItem = item;
-            break;
-          }
         }
       }
 
@@ -102,7 +100,6 @@ function simulateMuteAction(tweetElement, username) {
         return;
       }
 
-      // Ensure the menu item is visible and clickable
       if (muteMenuItem.offsetParent !== null) {
         muteMenuItem.click();
         tweetElement.style.outline = "2px solid orange";
@@ -157,44 +154,79 @@ function addMuteButtonToTweet(tweetElement) {
 }
 
 function processVisibleTweets() {
+  // Find all tweets that don't have the processed marker
   const tweets = document.querySelectorAll(
     `${TWEET_SELECTOR}:not([${PROCESSED_MARKER}])`
   );
+
+  // Process each tweet
   tweets.forEach(addMuteButtonToTweet);
+
+  // Also check for tweets in any iframes (like embedded tweets)
+  const iframes = document.querySelectorAll("iframe");
+  iframes.forEach((iframe) => {
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      const iframeTweets = iframeDoc.querySelectorAll(
+        `${TWEET_SELECTOR}:not([${PROCESSED_MARKER}])`
+      );
+      iframeTweets.forEach(addMuteButtonToTweet);
+    } catch (e) {
+      // Skip iframes we can't access due to same-origin policy
+    }
+  });
 }
 
 // --- Initialization and Observation ---
 
+// Initial processing
 setTimeout(processVisibleTweets, 1000);
 
-const observer = new MutationObserver((mutationsList) => {
-  for (const mutation of mutationsList) {
+// Set up periodic checks
+const periodicCheck = setInterval(processVisibleTweets, CHECK_INTERVAL);
+
+// Set up mutation observer with more comprehensive options
+const observer = new MutationObserver((mutations) => {
+  let shouldProcess = false;
+
+  for (const mutation of mutations) {
+    // Check for child list changes
     if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-      let foundNewTweets = false;
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.matches(TWEET_SELECTOR)) {
-            addMuteButtonToTweet(node);
-            foundNewTweets = true;
-          } else {
-            const subTweets = node.querySelectorAll(
-              `${TWEET_SELECTOR}:not([${PROCESSED_MARKER}])`
-            );
-            if (subTweets.length > 0) {
-              subTweets.forEach(addMuteButtonToTweet);
-              foundNewTweets = true;
-            }
-          }
-        }
-      });
+      shouldProcess = true;
+      break;
     }
+
+    // Check for attribute changes that might indicate new content
+    if (
+      mutation.type === "attributes" &&
+      (mutation.target.matches(TWEET_SELECTOR) ||
+        mutation.target.closest(TWEET_SELECTOR))
+    ) {
+      shouldProcess = true;
+      break;
+    }
+  }
+
+  if (shouldProcess) {
+    processVisibleTweets();
   }
 });
 
+// Start observing with more comprehensive options
 setTimeout(() => {
   const mainContent = document.querySelector('main[role="main"]');
-  observer.observe(mainContent || document.body, {
-    childList: true,
-    subtree: true,
+  const targetNode = mainContent || document.body;
+
+  observer.observe(targetNode, {
+    childList: true, // Watch for changes to child elements
+    subtree: true, // Watch all descendants, not just direct children
+    attributes: true, // Watch for attribute changes
+    characterData: true, // Watch for text content changes
   });
 }, 2000);
+
+// Clean up when the page is unloaded
+window.addEventListener("unload", () => {
+  observer.disconnect();
+  clearInterval(periodicCheck);
+});
